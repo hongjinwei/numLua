@@ -17,6 +17,7 @@
 --}
 local cjson = require 'cjson'
 local getn = table.getn
+local find = string.find
 
 lab = {}
 lab.version = '0.0.1'
@@ -24,10 +25,17 @@ lab.version = '0.0.1'
 --------------------------------------------------------------
 ------ local util function
 -------------------------------------------------------------
-local function LAB_ERROR(msg)
-    print('ERROR!')
+local function LAB_ERROR(msg, data)
+    print('===ERROR===')
     if msg then 
         print(msg)
+    end
+    if data then 
+        if type(data) == 'table' then 
+            print(cjson.encode(table))
+        else
+            print(data)
+        end
     end
 end
 
@@ -45,11 +53,9 @@ end
 local function array_add(a,b)
     if type(a) ~= 'table' and type(b) ~= 'table' then 
         return nil
-    end
-    if a.datatype ~= b.datatype then 
+    elseif a.datatype ~= b.datatype then 
         return nil
-    end
-    if a.size ~= b.size then 
+    elseif a.size ~= b.size then 
         return nil
     end
     local data = {}
@@ -66,11 +72,9 @@ end
 local function array_sub(a,b)
     if type(a) ~= 'table' and type(b) ~= 'table' then 
         return nil
-    end
-    if a.datatype ~= b.datatype then 
+    elseif a.datatype ~= b.datatype then 
         return nil
-    end
-    if a.size ~= b.size then 
+    elseif a.size ~= b.size then 
         return nil
     end
     local data = {}
@@ -106,35 +110,60 @@ local function array_mul(a,b)
         end
         return lab.array(data,t)
     elseif type(a) == 'table' and type(b) == 'table' then 
-        if a.size ~= a.size then 
-            return nil
-        end
-        if a.datatype == b.datatype then 
-            local data = {}
-            for i=1,a.size do
-                data[#data+1] = (a.data[i]) * (b.data[i])
+        if find(a.datatype, 'a') and find(b.datatype,'a') then 
+            if a.size ~= a.size then 
+                return nil
             end
-            local t
-            if a.datatype == 'a_t' then 
-                t = 't'
-            end
-            return lab.array(data,t)
-        elseif a.datatype == 'a' and b.datatype == 'a_t' then 
-            local data = {}
-            data[1] = {}  
-            for i=1,a.size do
-                data[1][i] = (a.data[i]) * (b.data[i])
-            end
-            return lab.matrix(data)
-        elseif a.datatype == 'a_t' and b.datatype == 'a' then 
-            local data = {}
-            for i=1,a.size do
-                data[i] ={}
-                for j=1,b.size do
-                    data[i][j] = a.data[i] * b.data[j]
+            if a.datatype == b.datatype then 
+                local data = {}
+                for i=1,a.size do
+                    data[#data+1] = (a.data[i]) * (b.data[i])
                 end
+                local t
+                if a.datatype == 'a_t' then 
+                    t = 't'
+                end
+                return lab.array(data,t)
+            elseif a.datatype == 'a' and b.datatype == 'a_t' then 
+                local data = 0
+                for i=1,a.size do
+                    data = data + (a.data[i]) * (b.data[i])
+                end
+                return data
+            elseif a.datatype == 'a_t' and b.datatype == 'a' then 
+                local data = 0
+                for i=1,a.size do
+                    data =  data + a.data[i] * b.data[i]
+                end
+                return data
             end
-            return lab.matrix(data)
+        elseif a.datatype == 'm' then 
+            --TODO
+        elseif b.datatype == 'm' and a.datatype == 'a' then 
+            local res = {}
+            if a.size ~= b.size.height then 
+                return nil, "error size"
+            end
+            for i=1,b.size.len do 
+                local tmp = 0
+                for j=1,b.size.height do
+                    tmp = tmp + a.data[j] * b.data[j][i]
+                end
+                res[i] = tmp
+            end
+            return lab.array(res,t)
+        elseif a.datatype == 'a_t' and b.datatype == 'm' then 
+            local res = {}
+            if b.size.height ~= 1 then 
+                return nil, 'error size'
+            end
+            for i=1,a.size do
+                res[i] = {}
+                for j=1,b.size.len do 
+                    res[i][j] =  a.data[i] * b.data[1][j]
+                end
+            end 
+            return lab.matrix(res)
         end
     else
         return nil
@@ -225,6 +254,33 @@ local function array_concat(a,b)
     end
 end
 
+local function array_pow(a,b)
+    if type(a) == 'table' and type(b) == 'number' then 
+        local res = {}
+        for i=1, a.size do
+            res[#res + 1] = a.data[i] ^ b  
+        end
+        local t 
+        if a.datatype == 'a_t' then 
+            t = 't'
+        end
+        return lab.array(res,t)
+    else
+        return nil
+    end
+end
+
+local function array_unm(a)
+    local res = {}
+    local t 
+    if a.datatype == 'a_t' then 
+        t = 't'
+    end
+    for i=1,a.size do
+        res[#res + 1] = 0 - a.data[i]
+    end
+    return lab.array(res, t)
+end
 --------------------------------------------------------------
 --------matrix calculation
 --------------------------------------------------------------
@@ -243,12 +299,9 @@ end
 local function matrix_add(a,b)
     if type(a) ~= 'table' or type(b) ~= 'table' then 
         return nil, 'error value, matrix needed'
-    end
-    if a.datatype ~= 'm' or b.datatype ~= 'm' then 
+    elseif a.datatype ~= 'm' or b.datatype ~= 'm' then 
         return nil, 'error value, matrix needed'
-    end
-    
-    if a.size.len ~= b.size.len or a.size.height ~= b.size.height then 
+    elseif a.size.len ~= b.size.len or a.size.height ~= b.size.height then 
         return nil, 'error: different matrix size'
     end
 
@@ -264,12 +317,109 @@ local function matrix_add(a,b)
 end
 
 local function matrix_sub(a,b)
+    if type(a) ~= 'table' or type(b) ~= 'table' then 
+        return nil, 'error value, matrix needed'
+    elseif a.datatype ~= 'm' or b.datatype ~= 'm' then 
+        return nil, 'error value, matrix needed'
+    elseif a.size.len ~= b.size.len or a.size.height ~= b.size.height then 
+        return nil, 'error: different matrix size'
+    end
+
+    local l, h = a.size.len , a.size.height
+    local data = {}
+    for i=1,h do
+        data[i] = {}
+        for j=1, l do
+            data[i][j] = a.data[i][j] - b.data[i][j]
+        end
+    end
+    return lab.matrix(data)
 end
 
 local function matrix_mul(a,b)
+    local res = {}
+    if type(a) == 'number' or type(b) == 'number' then 
+        local l,h,data,num
+        if type(a) == 'number' then 
+            l, h = b.size.len, b.size.height 
+            data = b.data
+            num = a
+        else
+            l, h = a.size.len, a.size.height 
+            data = a.data
+            num = b
+        end
+        for i=1, h do
+            res[i] = {}
+            for j=1,l do
+                res[i][j] = data[i][j] * num
+            end
+        end
+        return lab.matrix(res)
+    end
+    
+    if find(a.datatype,'a') or find(b.datatype,'a') then 
+        if a.datatype == 'a' then 
+            --TODO            
+        elseif b.datatype == 'a' then 
+            if a.size.len ~= 1 then 
+                return nil, 'error size'
+            end
+            for i=1,a.size.height do
+                res[i] = {}
+                for j=1,b.size do
+                    res[i][j] = a.data[i][1] * b.data[j]
+                end
+            end
+            return lab.matrix(res) 
+        elseif b.datatype == 'a_t' then 
+            if a.size.len ~= b.size then 
+                return nil,'error size'
+            end
+
+            for i=1,a.size.height do
+                local tmp = 0
+                for j=1,a.size.len do
+                    tmp = tmp + a.data[i][j] * b.data[j]
+                end
+                res[i] = tmp
+            end
+            return lab.array(res,'t')
+        else
+            return nil
+        end
+    end
+
+    if a.datatype == 'm' and b.datatype == 'm' then 
+        if a.size.len ~= b.size.height then 
+            return nil,'error size'
+        end
+
+        for i=1,a.size.height do
+            res[i]={}
+            for j=1,b.size.len do
+                local tmp = 0
+                for k=1, a.size.len do
+                    tmp = tmp + a.data[i][k] * b.data[k][j]
+                end      
+                res[i][j] = tmp
+            end
+        end
+        return lab.matrix(res)
+    end
+    return nil,'unkwon'
 end
 
 local function matrix_div(a,b)
+end
+
+local function matrix_concat(a,b)
+end
+
+local function matrix_unm()
+end
+
+local function matrix_pow()
 end
 ----------------------------------------------------------------
 ----------other function
@@ -316,6 +466,8 @@ function lab.array(tbl,t)
         __sub = array_sub,
         __mul = array_mul,
         __div = array_div,
+        __pow = array_pow,
+        __unm = array_unm,
         __concat = array_concat,
         __index = {
             size = array_len(array),
@@ -357,6 +509,12 @@ function lab.matrix(tbl)
     matrix.size = matrix_size(matrix)
     mt = {
         __add = matrix_add,
+        __sub = matrix_sub,
+        __mul = matrix_mul,
+        __div = matrix_div,
+        __unm = matrix_unm,
+        __pow = matrix_pow,
+        __concat = matrix_concat,
         __index = {
             size = matrix_size(matrix),
             T = function()
@@ -426,6 +584,9 @@ function lab.tostring(obj)
         end
         return str .. '     ]\n'
     elseif obj.datatype == 'm' then 
+        if not next(obj.data) then
+            return 'matrix{}'
+        end
         str = 'matrix{\n'
         head = '        '
         tail = ','
@@ -461,9 +622,8 @@ end
 
 
 array = lab.array({1,2,3})
-c = lab.array({2,3,4})
---print(lab.tostring(array))
---print(lab.tostring(c))
+c = lab.array({1,3},'t')
+--print(lab.tostring(-array))
 --local res = array .. c
 --print(lab.tostring(res))
 a = {
@@ -472,15 +632,18 @@ a = {
     }
 
 b = {
-    {3,4,5,2},
-    {2,3,1,2}
+    {3,3,2},
+    {2,4,4},
+    {2,4,1},
+    {2,4,3}
     }
 
 ma = lab.matrix(a)
 mb = lab.matrix(b)
 print(lab.tostring(ma))
 print(lab.tostring(mb))
-local res = ma 
+--print(lab.tostring(mb))
+local res = ma * mb
 print(lab.tostring(res))
 
 --print(lab.tostring(lab.eye(4)))
